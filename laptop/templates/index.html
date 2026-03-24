@@ -53,7 +53,6 @@ body::before {
 @keyframes scanbar { 0%,100%{opacity:.3} 50%{opacity:1} }
 
 #logo { font-family: var(--display); font-size: 22px; font-weight: 900; letter-spacing: 6px; color: var(--amber); text-shadow: 0 0 20px rgba(255,179,15,.6); }
-#logo span { font-size: 11px; font-weight: 400; letter-spacing: 3px; color: var(--text-dim); display: block; margin-top: -2px; }
 
 .topbar-sep { width: 1px; height: 28px; background: var(--border); }
 
@@ -153,7 +152,8 @@ body::before {
   <div class="feed-wrap">
     <div class="corner-br"></div><div class="corner-bl"></div>
     <div class="feed-label">RAW · FEED</div>
-    <img src="/raw" onload="feedOnline()">
+    <!-- FIX #18: onload updates lastFrameAt heartbeat; onerror marks feed offline -->
+    <img id="rawImg" src="/raw" onload="feedFrame()" onerror="feedOffline()">
     <div class="feed-badge"><div class="live-blink"></div>LIVE</div>
     <div class="rec-badge" id="recBadge1"><div class="live-blink" style="background:var(--red);box-shadow:0 0 5px var(--red)"></div>REC</div>
   </div>
@@ -211,6 +211,9 @@ body::before {
 const socket = io();
 let recording = false, talking = false;
 let audioCtx = null, scriptNode = null, micStream = null;
+// FIX #17: guard flag prevents a fast double-click from opening a second mic
+// stream while getUserMedia is still resolving from the first click.
+let pttPending = false;
 
 // Clock
 function tick() {
@@ -220,14 +223,32 @@ function tick() {
 tick(); setInterval(tick, 1000);
 
 // Socket status
-socket.on('connect',    () => { document.getElementById('dot-conn').className = 'dot';     document.getElementById('conn-label').textContent = 'CONNECTED'; });
-socket.on('disconnect', () => { document.getElementById('dot-conn').className = 'dot red'; document.getElementById('conn-label').textContent = 'OFFLINE'; });
+socket.on('connect',    () => {
+  document.getElementById('dot-conn').className = 'dot';
+  document.getElementById('conn-label').textContent = 'CONNECTED';
+});
+socket.on('disconnect', () => {
+  document.getElementById('dot-conn').className = 'dot red';
+  document.getElementById('conn-label').textContent = 'OFFLINE';
+  // FIX #18: feed is also unknown when socket drops
+  feedOffline();
+});
 
-// Feed
-let feedAlive = false;
-function feedOnline() { if (!feedAlive) { feedAlive = true; document.getElementById('dot-feed').className = 'dot'; } }
+// FIX #18: track last frame timestamp and poll for staleness.
+// feedFrame() is called by the img onload which fires on each MJPEG frame.
+let lastFrameAt = 0;
+function feedFrame() {
+  lastFrameAt = Date.now();
+  document.getElementById('dot-feed').className = 'dot';
+}
+function feedOffline() {
+  document.getElementById('dot-feed').className = 'dot red';
+}
+setInterval(() => {
+  if (lastFrameAt && Date.now() - lastFrameAt > 3000) feedOffline();
+}, 1000);
 
-// GPS log
+// GPS log — FIX #7 (server now returns all 500): render full history
 setInterval(() => {
   fetch('/logs').then(r => r.json()).then(data => {
     document.getElementById('log-count').textContent = data.length;
@@ -249,43 +270,88 @@ setInterval(() => {
   });
 }, 1000);
 
-// Record
+// Record — FIX #8: UI state is driven by server's record_state event,
+// not by the optimistic local toggle, so it accurately reflects reality.
+socket.on('record_state', (active) => {
+  recording = active;
+  document.getElementById('recordBtn').classList.toggle('rec-active', active);
+  document.getElementById('recordSub').textContent = active ? 'Recording…' : 'Idle';
+  document.getElementById('dot-rec').className = active ? 'dot red' : 'dot off';
+  document.getElementById('recBadge1').classList.toggle('visible', active);
+  document.getElementById('recBadge2').classList.toggle('visible', active);
+});
+
 function toggleRecord() {
-  recording = !recording;
-  socket.emit('toggle_record', recording);
-  document.getElementById('recordBtn').classList.toggle('rec-active', recording);
-  document.getElementById('recordSub').textContent = recording ? 'Recording…' : 'Idle';
-  document.getElementById('dot-rec').className = recording ? 'dot red' : 'dot off';
-  document.getElementById('recBadge1').classList.toggle('visible', recording);
-  document.getElementById('recBadge2').classList.toggle('visible', recording);
+  // Just send the request; UI update waits for record_state from server
+  socket.emit('toggle_record', !recording);
 }
 
 // PTT
-const PTT_SAMPLE_RATE = 16000, PTT_BLOCK_SIZE = 2048;
+const PTT_BLOCK_SIZE = 2048;  // target output block size in samples
+const TARGET_RATE = 16000;    // must match NET_RATE on the Pi
+
 function togglePTT() {
+  if (pttPending) return;
+
   talking = !talking;
   document.getElementById('pttBtn').classList.toggle('active', talking);
   document.getElementById('pttSub').textContent = talking ? 'Transmitting…' : 'Mic standby';
+
   if (!talking) { stopPTT(); return; }
+
+  pttPending = true;
   navigator.mediaDevices.getUserMedia({ audio: true }).then(stream => {
-    micStream  = stream;
-    audioCtx   = new AudioContext({ sampleRate: PTT_SAMPLE_RATE });
+    pttPending = false;
+    if (!talking) { stream.getTracks().forEach(t => t.stop()); return; }
+
+    micStream = stream;
+    // Let the browser use its native rate — don't force 16000 Hz here.
+    // Browsers ignore the sampleRate hint and silently stay at 48000 Hz,
+    // which makes audio arrive at the Pi 3x too fast. We downsample below.
+    audioCtx = new AudioContext();
+    const nativeRate = audioCtx.sampleRate;           // usually 44100 or 48000
+    const downsample = Math.round(nativeRate / TARGET_RATE);  // e.g. 3 for 48000
+
     const src  = audioCtx.createMediaStreamSource(stream);
-    scriptNode = audioCtx.createScriptProcessor(PTT_BLOCK_SIZE, 1, 1);
+    // Block size in native samples; after downsampling yields ~2048 target samples
+    const blockSize = PTT_BLOCK_SIZE * downsample;
+    scriptNode = audioCtx.createScriptProcessor(blockSize, 1, 1);
+
     scriptNode.onaudioprocess = e => {
       if (!talking) return;
       const f32 = e.inputBuffer.getChannelData(0);
-      const i16 = new Int16Array(f32.length);
-      for (let i = 0; i < f32.length; i++) i16[i] = Math.max(-32768, Math.min(32767, f32[i] * 32768));
+
+      // Downsample: keep every Nth sample to convert nativeRate → TARGET_RATE
+      const outLen = Math.floor(f32.length / downsample);
+      const i16 = new Int16Array(outLen);
+      for (let i = 0; i < outLen; i++) {
+        const s = f32[i * downsample];
+        i16[i] = Math.max(-32768, Math.min(32767, s * 32768));
+      }
+
       socket.emit('laptop_audio', i16.buffer);
     };
-    src.connect(scriptNode); scriptNode.connect(audioCtx.destination);
+
+    // Connect to a MUTED gain node — not directly to destination.
+    // Connecting to destination routes mic audio through laptop speakers
+    // (feedback loop) and Chrome may suspend the AudioContext when it
+    // detects the loop. The muted node satisfies Chrome's requirement that
+    // the graph has a destination without making any sound.
+    const mute = audioCtx.createGain();
+    mute.gain.value = 0;
+    src.connect(scriptNode);
+    scriptNode.connect(mute);
+    mute.connect(audioCtx.destination);
+
   }).catch(err => {
-    console.error('PTT:', err); talking = false;
+    pttPending = false;
+    talking = false;
     document.getElementById('pttBtn').classList.remove('active');
     document.getElementById('pttSub').textContent = 'Mic error';
+    console.error('PTT:', err);
   });
 }
+
 function stopPTT() {
   if (scriptNode) { scriptNode.disconnect(); scriptNode = null; }
   if (audioCtx)   { audioCtx.close();        audioCtx = null;  }
