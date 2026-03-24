@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>HYDRA Control</title>
+
+<style>
+body {
+  margin: 0;
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  grid-template-rows: auto 240px;
+  height: 100vh;
+  background: #050b14;
+  font-family: monospace;
+}
+
+img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border: 1px solid #102a44;
+}
+
+#status {
+  background: #0b1c2d;
+  color: #e3f7ff;
+  padding: 12px;
+}
+
+#logs {
+  grid-column: 1 / 4;
+  background: #0b1c2d;
+  color: #e3f7ff;
+  padding: 10px;
+  overflow-y: auto;
+  font-size: 13px;
+}
+
+button {
+  width: 100%;
+  margin-bottom: 8px;
+  padding: 8px;
+  background: #102a44;
+  color: #4fc3ff;
+  border: 1px solid #4fc3ff;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+button.active {
+  background: #00e5ff;
+  color: #000;
+}
+
+button:hover {
+  background: #163a5c;
+}
+
+hr {
+  border: none;
+  border-top: 1px solid #4fc3ff;
+  margin: 10px 0;
+}
+</style>
+</head>
+
+<body>
+
+<!-- LEFT -->
+<img src="/raw">
+
+<!-- CENTER -->
+<img src="/cv">
+
+<!-- RIGHT -->
+<div id="status">
+  <b>HYDRA CONTROL</b>
+  <hr>
+
+  <button id="recordBtn" onclick="toggleRecord()">⏺ RECORD</button>
+  <button id="pttBtn" onclick="togglePTT()">🎙 PUSH-TO-TALK</button>
+  <button onclick="manualGPS()">📍 MANUAL GPS LOG</button>
+
+  <hr>
+  <div id="sys">System Online</div>
+</div>
+
+<!-- BOTTOM -->
+<div id="logs"></div>
+
+<script src="https://cdn.socket.io/4.6.1/socket.io.min.js"></script>
+<script>
+const socket = io();
+
+let recording = false;
+let talking = false;
+let mediaRecorder = null;
+
+/* ---------- LOG UPDATE ---------- */
+setInterval(() => {
+  fetch("/logs")
+    .then(r => r.json())
+    .then(data => {
+      document.getElementById("logs").innerHTML =
+        data.map(l =>
+          `[${new Date(l.time*1000).toLocaleTimeString()}] `
+          + `LAT:${l.lat} LON:${l.lon}`
+          + (l.manual ? " (MANUAL)" : "")
+        ).join("<br>");
+    });
+}, 1000);
+
+/* ---------- RECORD ---------- */
+function toggleRecord() {
+  recording = !recording;
+  socket.emit("toggle_record", recording);
+  document.getElementById("recordBtn")
+    .classList.toggle("active", recording);
+}
+
+/* ---------- PUSH TO TALK ---------- */
+function togglePTT() {
+  talking = !talking;
+  const btn = document.getElementById("pttBtn");
+  btn.classList.toggle("active", talking);
+
+  if (!talking) {
+    if (mediaRecorder) mediaRecorder.stop();
+    return;
+  }
+
+  navigator.mediaDevices.getUserMedia({ audio: true }).then(stream => {
+    mediaRecorder = new MediaRecorder(stream);
+    mediaRecorder.ondataavailable = e => {
+      if (e.data.size > 0) socket.emit("laptop_audio", e.data);
+    };
+    mediaRecorder.start(200);
+  });
+}
+
+/* ---------- GPS ---------- */
+function manualGPS() {
+  socket.emit("manual_gps");
+}
+</script>
+
+</body>
+</html>
