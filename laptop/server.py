@@ -95,21 +95,29 @@ def cv():
     return Response(gen(), mimetype="multipart/x-mixed-replace; boundary=frame")
 
 @app.route("/logs")
-def logs(): return jsonify(gps_logs[-100:])
+def logs():
+    with lock:
+        snapshot = list(gps_logs[-100:])
+    return jsonify(snapshot)
 
 @socketio.on("gps")
 def gps_rx(d):
-    gps_logs.append(d)
-    gps_logs[:] = gps_logs[-500:]
+    with lock:
+        gps_logs.append(d)
+        del gps_logs[:-500]
 
 @socketio.on("manual_gps")
 def gps_manual():
-    gps_logs.append({
+    with lock:
+        last = gps_logs[-1] if gps_logs else None
+    gps_logs_entry = {
         "time": time.time(),
-        "lat": gps_logs[-1]["lat"] if gps_logs else 0,
-        "lon": gps_logs[-1]["lon"] if gps_logs else 0,
+        "lat": last["lat"] if last else 0,
+        "lon": last["lon"] if last else 0,
         "manual": True
-    })
+    }
+    with lock:
+        gps_logs.append(gps_logs_entry)
 
 @socketio.on("laptop_audio")
 def laptop_audio(d):

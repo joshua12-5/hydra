@@ -1,148 +1,298 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-<title>HYDRA Control</title>
+<meta charset="UTF-8">
+<title>HYDRA</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Orbitron:wght@400;700;900&display=swap" rel="stylesheet">
 
 <style>
-body {
-  margin: 0;
+:root {
+  --bg:        #06090f;
+  --panel:     #090e18;
+  --panel2:    #0b1220;
+  --border:    #1a2a40;
+  --amber:     #ffb30f;
+  --amber-dim: #7a5600;
+  --green:     #39ff7a;
+  --red:       #ff3b3b;
+  --cyan:      #00d4ff;
+  --text:      #c8daea;
+  --text-dim:  #4a6480;
+  --mono:      'Share Tech Mono', monospace;
+  --display:   'Orbitron', monospace;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { width: 100%; height: 100%; overflow: hidden; background: var(--bg); color: var(--text); font-family: var(--mono); font-size: 13px; }
+
+body::before {
+  content: ''; position: fixed; inset: 0; z-index: 999; pointer-events: none;
+  background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,0.07) 2px, rgba(0,0,0,0.07) 4px);
+}
+
+#root {
   display: grid;
-  grid-template-columns: 1fr 1fr 1fr;
-  grid-template-rows: auto 240px;
-  height: 100vh;
-  background: #050b14;
-  font-family: monospace;
+  grid-template-rows: 52px 1fr 150px;
+  grid-template-columns: 1fr 1fr 280px;
+  height: 100vh; gap: 6px; padding: 6px;
 }
 
-img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  border: 1px solid #102a44;
-}
-
-#status {
-  background: #0b1c2d;
-  color: #e3f7ff;
-  padding: 12px;
-}
-
-#logs {
+/* TOPBAR */
+#topbar {
   grid-column: 1 / 4;
-  background: #0b1c2d;
-  color: #e3f7ff;
-  padding: 10px;
-  overflow-y: auto;
-  font-size: 13px;
+  background: var(--panel); border: 1px solid var(--border);
+  display: flex; align-items: center; padding: 0 18px; gap: 24px;
+  position: relative; overflow: hidden;
 }
+#topbar::after {
+  content: ''; position: absolute; bottom: 0; left: 0; right: 0; height: 1px;
+  background: linear-gradient(90deg, transparent, var(--amber), transparent);
+  animation: scanbar 4s linear infinite;
+}
+@keyframes scanbar { 0%,100%{opacity:.3} 50%{opacity:1} }
 
-button {
-  width: 100%;
-  margin-bottom: 8px;
-  padding: 8px;
-  background: #102a44;
-  color: #4fc3ff;
-  border: 1px solid #4fc3ff;
-  cursor: pointer;
-  font-size: 14px;
-}
+#logo { font-family: var(--display); font-size: 22px; font-weight: 900; letter-spacing: 6px; color: var(--amber); text-shadow: 0 0 20px rgba(255,179,15,.6); }
+#logo span { font-size: 11px; font-weight: 400; letter-spacing: 3px; color: var(--text-dim); display: block; margin-top: -2px; }
 
-button.active {
-  background: #00e5ff;
-  color: #000;
-}
+.topbar-sep { width: 1px; height: 28px; background: var(--border); }
 
-button:hover {
-  background: #163a5c;
-}
+.status-pill { display: flex; align-items: center; gap: 8px; font-size: 11px; letter-spacing: 1px; color: var(--text-dim); text-transform: uppercase; }
 
-hr {
-  border: none;
-  border-top: 1px solid #4fc3ff;
-  margin: 10px 0;
+.dot { width: 7px; height: 7px; border-radius: 50%; background: var(--green); box-shadow: 0 0 6px var(--green); animation: pulse-dot 2s ease-in-out infinite; }
+.dot.red  { background: var(--red);      box-shadow: 0 0 6px var(--red); }
+.dot.off  { background: var(--text-dim); box-shadow: none; animation: none; }
+@keyframes pulse-dot { 0%,100%{opacity:1} 50%{opacity:.3} }
+
+#clock { margin-left: auto; font-family: var(--display); font-size: 18px; color: var(--amber); letter-spacing: 3px; }
+
+/* FEEDS */
+.feed-wrap { position: relative; background: #000; border: 1px solid var(--border); overflow: hidden; }
+.feed-wrap img { width: 100%; height: 100%; object-fit: cover; display: block; }
+
+.feed-wrap::before, .feed-wrap::after, .corner-br, .corner-bl {
+  content: ''; position: absolute; width: 18px; height: 18px; z-index: 2; pointer-events: none;
 }
+.feed-wrap::before { top: 8px; left: 8px;  border-top: 2px solid var(--amber); border-left:  2px solid var(--amber); }
+.feed-wrap::after  { top: 8px; right: 8px; border-top: 2px solid var(--amber); border-right: 2px solid var(--amber); }
+.corner-br { bottom: 8px; right: 8px; border-bottom: 2px solid var(--amber); border-right: 2px solid var(--amber); }
+.corner-bl { bottom: 8px; left:  8px; border-bottom: 2px solid var(--amber); border-left:  2px solid var(--amber); }
+
+.feed-label { position: absolute; top: 12px; left: 50%; transform: translateX(-50%); font-family: var(--display); font-size: 9px; letter-spacing: 3px; color: var(--amber); opacity: .7; z-index: 3; }
+.feed-badge { position: absolute; bottom: 12px; right: 28px; font-size: 10px; letter-spacing: 2px; color: var(--green); z-index: 3; display: flex; align-items: center; gap: 5px; }
+.live-blink { width: 6px; height: 6px; border-radius: 50%; background: var(--green); box-shadow: 0 0 5px var(--green); animation: pulse-dot 1s ease-in-out infinite; }
+.rec-badge  { position: absolute; bottom: 12px; left: 28px; font-size: 10px; letter-spacing: 2px; color: var(--red); z-index: 3; display: none; align-items: center; gap: 5px; }
+.rec-badge.visible { display: flex; }
+
+/* CONTROLS */
+#ctrl { background: var(--panel); border: 1px solid var(--border); padding: 16px 14px; display: flex; flex-direction: column; gap: 10px; overflow-y: auto; }
+
+.ctrl-heading { font-family: var(--display); font-size: 9px; letter-spacing: 3px; color: var(--text-dim); text-transform: uppercase; padding-bottom: 8px; border-bottom: 1px solid var(--border); }
+
+.tac-btn {
+  width: 100%; padding: 11px 14px; background: transparent; border: 1px solid var(--border);
+  color: var(--text); font-family: var(--mono); font-size: 12px; letter-spacing: 2px; text-align: left;
+  cursor: pointer; display: flex; align-items: center; gap: 10px; position: relative;
+  transition: border-color .15s, background .15s; text-transform: uppercase; overflow: hidden;
+}
+.tac-btn::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: var(--amber-dim); transition: background .15s; }
+.tac-btn:hover  { border-color: var(--amber); background: rgba(255,179,15,.05); }
+.tac-btn:hover::before { background: var(--amber); }
+.tac-btn:active { transform: scale(.98); }
+.tac-btn.active     { border-color: var(--amber); background: rgba(255,179,15,.08); color: var(--amber); }
+.tac-btn.active::before { background: var(--amber); }
+.tac-btn.rec-active { border-color: var(--red); background: rgba(255,59,59,.08); color: var(--red); }
+.tac-btn.rec-active::before { background: var(--red); }
+
+.btn-icon { font-size: 16px; width: 22px; text-align: center; flex-shrink: 0; }
+.btn-sub  { font-size: 9px; letter-spacing: 1px; color: var(--text-dim); display: block; margin-top: 1px; }
+.tac-btn.active .btn-sub { color: var(--amber-dim); }
+
+.data-row { display: flex; justify-content: space-between; align-items: center; padding: 7px 0; border-bottom: 1px solid var(--border); font-size: 11px; }
+.data-row:last-child { border-bottom: none; }
+.data-label { color: var(--text-dim); letter-spacing: 1px; text-transform: uppercase; }
+.data-val   { color: var(--cyan); font-size: 12px; }
+.data-val.ok { color: var(--green); }
+.ctrl-div { height: 1px; background: var(--border); margin: 4px 0; }
+
+/* GPS LOG */
+#logpanel { grid-column: 1 / 4; background: var(--panel); border: 1px solid var(--border); display: grid; grid-template-columns: 110px 1fr; }
+#log-header { padding: 10px 14px; border-right: 1px solid var(--border); display: flex; flex-direction: column; justify-content: center; gap: 4px; }
+#log-header .ctrl-heading { border-bottom: none; padding: 0; }
+#log-count { font-family: var(--display); font-size: 24px; color: var(--amber); margin-top: 4px; }
+#logs { padding: 10px 14px; overflow-y: auto; font-size: 11px; line-height: 1.7; color: var(--text-dim); display: flex; flex-direction: column-reverse; }
+
+.log-entry { display: flex; gap: 12px; padding: 2px 0; border-bottom: 1px solid rgba(26,42,64,.5); animation: fadein .3s ease; }
+@keyframes fadein { from{opacity:0;transform:translateY(-4px)} to{opacity:1;transform:translateY(0)} }
+.log-time   { color: var(--amber); flex-shrink: 0; }
+.log-coords { color: var(--cyan); }
+.log-manual { color: var(--text-dim); font-size: 10px; margin-left: auto; letter-spacing: 1px; }
+
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
 </style>
 </head>
-
 <body>
 
-<!-- LEFT -->
-<img src="/raw">
+<div id="root">
 
-<!-- CENTER -->
-<img src="/cv">
+  <!-- TOPBAR -->
+  <div id="topbar">
+    <div id="logo">HYDRA</div>
+    <div class="topbar-sep"></div>
+    <div class="status-pill"><div class="dot" id="dot-conn"></div><span id="conn-label">CONNECTING</span></div>
+    <div class="topbar-sep"></div>
+    <div class="status-pill"><div class="dot off" id="dot-feed"></div>VIDEO FEED</div>
+    <div class="topbar-sep"></div>
+    <div class="status-pill"><div class="dot off" id="dot-rec"></div>RECORD</div>
+    <div id="clock">--:--:--</div>
+  </div>
 
-<!-- RIGHT -->
-<div id="status">
-  <b>HYDRA CONTROL</b>
-  <hr>
+  <!-- RAW FEED -->
+  <div class="feed-wrap">
+    <div class="corner-br"></div><div class="corner-bl"></div>
+    <div class="feed-label">RAW · FEED</div>
+    <img src="/raw" onload="feedOnline()">
+    <div class="feed-badge"><div class="live-blink"></div>LIVE</div>
+    <div class="rec-badge" id="recBadge1"><div class="live-blink" style="background:var(--red);box-shadow:0 0 5px var(--red)"></div>REC</div>
+  </div>
 
-  <button id="recordBtn" onclick="toggleRecord()">⏺ RECORD</button>
-  <button id="pttBtn" onclick="togglePTT()">🎙 PUSH-TO-TALK</button>
-  <button onclick="manualGPS()">📍 MANUAL GPS LOG</button>
+  <!-- CV FEED -->
+  <div class="feed-wrap">
+    <div class="corner-br"></div><div class="corner-bl"></div>
+    <div class="feed-label">CV · YOLO · DETECTION</div>
+    <img src="/cv">
+    <div class="feed-badge"><div class="live-blink"></div>LIVE</div>
+    <div class="rec-badge" id="recBadge2"><div class="live-blink" style="background:var(--red);box-shadow:0 0 5px var(--red)"></div>REC</div>
+  </div>
 
-  <hr>
-  <div id="sys">System Online</div>
+  <!-- CONTROLS -->
+  <div id="ctrl">
+    <div class="ctrl-heading">Mission Controls</div>
+
+    <button class="tac-btn" id="recordBtn" onclick="toggleRecord()">
+      <span class="btn-icon">⏺</span>
+      <span>Record<span class="btn-sub" id="recordSub">Idle</span></span>
+    </button>
+
+    <button class="tac-btn" id="pttBtn" onclick="togglePTT()">
+      <span class="btn-icon">🎙</span>
+      <span>Push-to-Talk<span class="btn-sub" id="pttSub">Mic standby</span></span>
+    </button>
+
+    <button class="tac-btn" onclick="manualGPS()">
+      <span class="btn-icon">📍</span>
+      <span>Mark GPS<span class="btn-sub">Log current position</span></span>
+    </button>
+
+    <div class="ctrl-div"></div>
+    <div class="ctrl-heading">System Status</div>
+
+    <div class="data-row"><span class="data-label">Server</span><span class="data-val ok" id="sv-status">ONLINE</span></div>
+    <div class="data-row"><span class="data-label">GPS Pts</span><span class="data-val" id="sv-gps">0</span></div>
+    <div class="data-row"><span class="data-label">Last Lat</span><span class="data-val" id="sv-lat">—</span></div>
+    <div class="data-row"><span class="data-label">Last Lon</span><span class="data-val" id="sv-lon">—</span></div>
+  </div>
+
+  <!-- GPS LOG -->
+  <div id="logpanel">
+    <div id="log-header">
+      <div class="ctrl-heading">GPS Log</div>
+      <div id="log-count">0</div>
+    </div>
+    <div id="logs"><span style="color:var(--text-dim);font-size:11px">Awaiting telemetry…</span></div>
+  </div>
+
 </div>
-
-<!-- BOTTOM -->
-<div id="logs"></div>
 
 <script src="https://cdn.socket.io/4.6.1/socket.io.min.js"></script>
 <script>
 const socket = io();
+let recording = false, talking = false;
+let audioCtx = null, scriptNode = null, micStream = null;
 
-let recording = false;
-let talking = false;
-let mediaRecorder = null;
+// Clock
+function tick() {
+  document.getElementById('clock').textContent =
+    new Date().toLocaleTimeString('en-GB', { hour12: false });
+}
+tick(); setInterval(tick, 1000);
 
-/* ---------- LOG UPDATE ---------- */
+// Socket status
+socket.on('connect',    () => { document.getElementById('dot-conn').className = 'dot';     document.getElementById('conn-label').textContent = 'CONNECTED'; });
+socket.on('disconnect', () => { document.getElementById('dot-conn').className = 'dot red'; document.getElementById('conn-label').textContent = 'OFFLINE'; });
+
+// Feed
+let feedAlive = false;
+function feedOnline() { if (!feedAlive) { feedAlive = true; document.getElementById('dot-feed').className = 'dot'; } }
+
+// GPS log
 setInterval(() => {
-  fetch("/logs")
-    .then(r => r.json())
-    .then(data => {
-      document.getElementById("logs").innerHTML =
-        data.map(l =>
-          `[${new Date(l.time*1000).toLocaleTimeString()}] `
-          + `LAT:${l.lat} LON:${l.lon}`
-          + (l.manual ? " (MANUAL)" : "")
-        ).join("<br>");
-    });
+  fetch('/logs').then(r => r.json()).then(data => {
+    document.getElementById('log-count').textContent = data.length;
+    document.getElementById('sv-gps').textContent   = data.length;
+    if (data.length) {
+      const last = data[data.length - 1];
+      document.getElementById('sv-lat').textContent = last.lat.toFixed(6);
+      document.getElementById('sv-lon').textContent = last.lon.toFixed(6);
+    }
+    if (!data.length) return;
+    document.getElementById('logs').innerHTML = [...data].reverse().map(l => {
+      const t = new Date(l.time * 1000).toLocaleTimeString('en-GB', { hour12: false });
+      return `<div class="log-entry">
+        <span class="log-time">${t}</span>
+        <span class="log-coords">LAT ${l.lat.toFixed(6)}&nbsp;&nbsp;LON ${l.lon.toFixed(6)}</span>
+        ${l.manual ? '<span class="log-manual">MANUAL</span>' : ''}
+      </div>`;
+    }).join('');
+  });
 }, 1000);
 
-/* ---------- RECORD ---------- */
+// Record
 function toggleRecord() {
   recording = !recording;
-  socket.emit("toggle_record", recording);
-  document.getElementById("recordBtn")
-    .classList.toggle("active", recording);
+  socket.emit('toggle_record', recording);
+  document.getElementById('recordBtn').classList.toggle('rec-active', recording);
+  document.getElementById('recordSub').textContent = recording ? 'Recording…' : 'Idle';
+  document.getElementById('dot-rec').className = recording ? 'dot red' : 'dot off';
+  document.getElementById('recBadge1').classList.toggle('visible', recording);
+  document.getElementById('recBadge2').classList.toggle('visible', recording);
 }
 
-/* ---------- PUSH TO TALK ---------- */
+// PTT
+const PTT_SAMPLE_RATE = 16000, PTT_BLOCK_SIZE = 2048;
 function togglePTT() {
   talking = !talking;
-  const btn = document.getElementById("pttBtn");
-  btn.classList.toggle("active", talking);
-
-  if (!talking) {
-    if (mediaRecorder) mediaRecorder.stop();
-    return;
-  }
-
+  document.getElementById('pttBtn').classList.toggle('active', talking);
+  document.getElementById('pttSub').textContent = talking ? 'Transmitting…' : 'Mic standby';
+  if (!talking) { stopPTT(); return; }
   navigator.mediaDevices.getUserMedia({ audio: true }).then(stream => {
-    mediaRecorder = new MediaRecorder(stream);
-    mediaRecorder.ondataavailable = e => {
-      if (e.data.size > 0) socket.emit("laptop_audio", e.data);
+    micStream  = stream;
+    audioCtx   = new AudioContext({ sampleRate: PTT_SAMPLE_RATE });
+    const src  = audioCtx.createMediaStreamSource(stream);
+    scriptNode = audioCtx.createScriptProcessor(PTT_BLOCK_SIZE, 1, 1);
+    scriptNode.onaudioprocess = e => {
+      if (!talking) return;
+      const f32 = e.inputBuffer.getChannelData(0);
+      const i16 = new Int16Array(f32.length);
+      for (let i = 0; i < f32.length; i++) i16[i] = Math.max(-32768, Math.min(32767, f32[i] * 32768));
+      socket.emit('laptop_audio', i16.buffer);
     };
-    mediaRecorder.start(200);
+    src.connect(scriptNode); scriptNode.connect(audioCtx.destination);
+  }).catch(err => {
+    console.error('PTT:', err); talking = false;
+    document.getElementById('pttBtn').classList.remove('active');
+    document.getElementById('pttSub').textContent = 'Mic error';
   });
 }
-
-/* ---------- GPS ---------- */
-function manualGPS() {
-  socket.emit("manual_gps");
+function stopPTT() {
+  if (scriptNode) { scriptNode.disconnect(); scriptNode = null; }
+  if (audioCtx)   { audioCtx.close();        audioCtx = null;  }
+  if (micStream)  { micStream.getTracks().forEach(t => t.stop()); micStream = null; }
 }
-</script>
 
+function manualGPS() { socket.emit('manual_gps'); }
+</script>
 </body>
 </html>
